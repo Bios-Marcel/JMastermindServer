@@ -15,20 +15,21 @@ JSON, always of type `Message`
 - `type` : String ⇨ Message type
 - `message` : Object ⇨ Message
 
-## Success
+## Success : Object
 - `message` : String ⇨ Success message
 
 ## Error : Object
 - `id` : Integer ⇨ Error ID
 - `message` : String ⇨ Error message
 
-## Authenticate
+## Authenticate : Object
 - `username` : String ⇨ Username
 - `client` : String ⇨ Client information
 - `version` : String ⇨ Known API version
 
 ## Session : Object
 - `uuid` : String ⇨ Session UUID
+- `lastDateTime` : String ⇨ Last request date and time
 
 ## UserSession : Object
 - `sessionUUID` : String ⇨ Session UUID
@@ -45,9 +46,6 @@ JSON, always of type `Message`
 
 ## GetUser : UserSession
 - `userSessionUUID` : String ⇨ User session UUID
-
-## Report : GetUser
-- `reason` : String ⇨ Report reason
 
 ## Filter : UserSession
 - `filter` : String ⇨ Search filter
@@ -72,20 +70,51 @@ JSON, always of type `Message`
 - `username` : String ⇨ Username
 
 # Endpoints
-## GET
-- `/status` : UserSession ⇨ Get current status ⇨ Game | Lobby | Error
-- `/game` : SearchGame ⇨ Search for a lobby or create a lobby ⇨ Game | Lobby | Error
-- `/lobbies` : Filter ⇨ List available lobbies ⇨ Lobby[] | Error
-- `/user` : GetUser ⇨ Get user information ⇨ User | Error
-- `/users` : Filter ⇨ List users ⇨ User[] | Error
+## `/auth`
+Authenticate user
+### Request type
+`Authenticate`
+### Response type
+`Session` or `Error`
 
-## POST
-- `/auth` : Authenticate ⇨ Authenticate ⇨ Session | Error
-- `/lobby` : CreateLobby ⇨ Create lobby ⇨ Lobby | Error
-- `/report` : Report ⇨ Report user ⇨ Success | Error
+## `/game`
+Search for a lobby or create a lobby
+### Request type
+`SearchGame`
+### Response type
+`Game`, `Lobby` or `Error`
 
-## DELETE
-- `/lobby` : UserSession ⇨ Close or leave lobby ⇨ Success | Error
+## `/lobby/close`
+Close or leave lobby
+### Request type
+`UserSession`
+### Response type
+`Success` or `Error`
 
-## PATCH
-- `/lobby` : JoinLobby ⇨ Join lobby ⇨ Lobby | Error
+## `/lobby/create`
+Create lobby
+### Request type
+`CreateLobby`
+### Response type
+`Lobby` or `Error`
+
+## `/lobby/join`
+Join lobby
+### Request type
+`JoinLobby`
+### Response type
+`Game`, `Lobby` or `Error`
+
+## `/lobby/random`
+Join or create a lobby
+### Request type
+`CreateLobby`
+### Response type
+`Game`, `Lobby` or `Error`
+
+## `/status`
+Get current status like current game state or lobby state
+### Request  type
+`UserSession`
+### Response type
+`Game`, `Lobby` or `Error`
