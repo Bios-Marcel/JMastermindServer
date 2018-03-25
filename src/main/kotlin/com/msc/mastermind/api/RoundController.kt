@@ -25,7 +25,7 @@ class RoundController() : BaseController() {
 
     @GetMapping("/round/setcode")
     fun setCode(@RequestBody colorCode: ColorCode, @RequestHeader(value = "userSession") userSession: String): ResponseEntity<Response> {
-        val player = authenticationController.findPlayer(userSession) ?: throw InvalidUserSessionException()
+        authenticationController.findPlayer(userSession) ?: throw InvalidUserSessionException()
         val lobby = lobbyController.findLobbyByUserSession(userSession) ?: throw LobbyNotExistentException()
 
         if (lobby.gameState.colorCode != null) {

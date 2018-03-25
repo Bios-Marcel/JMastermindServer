@@ -4,5 +4,5 @@ enum class ResponseType {
     ERROR,
     SUCCESS,
     PLAYER,
-    CONNECTION_INFORMATION
+    STRING
 }

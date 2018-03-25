@@ -1,6 +1,9 @@
 package com.msc.mastermind.api
 
-import com.msc.mastermind.*
+import com.msc.mastermind.Lobby
+import com.msc.mastermind.Response
+import com.msc.mastermind.ResponseType
+import com.msc.mastermind.Success
 import com.msc.mastermind.exceptions.*
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.ResponseEntity
@@ -37,7 +40,7 @@ class LobbyController() : BaseController() {
 
         lobby.players.add(player)
         lobbies.add(lobby)
-        return ResponseEntity.ok(Response(ResponseType.CONNECTION_INFORMATION, ConnectionInformation(lobby.uuid)))
+        return ResponseEntity.ok(Response(ResponseType.STRING, lobby.uuid))
     }
 
     private fun canCreateLobby(userSession: String, lobbySize: Int, guessAttempts: Int) {
@@ -70,7 +73,26 @@ class LobbyController() : BaseController() {
 
         lobby.players.add(player)
 
-        return ResponseEntity.ok(Response(ResponseType.CONNECTION_INFORMATION, ConnectionInformation(lobby.uuid)))
+        return ResponseEntity.ok(Response(ResponseType.STRING, lobby.uuid))
+    }
+
+    fun joinLobbyRandom(@RequestHeader(value = "userSession") userSession: String): ResponseEntity<Response> {
+        val player = authenticationController.findPlayer(userSession) ?: throw InvalidUserSessionException()
+        val lobby = lobbies
+                .filter { it.inviteOnly.not() }
+                .filter { canLobbyBeJoined(it) }
+                .shuffled()
+                .firstOrNull() ?: throw LobbyNotExistentException()
+
+        //TODO New Exception necessary NoLobbyFoundException
+
+        lobby.players.add(player)
+
+        return ResponseEntity.ok(Response(ResponseType.STRING, lobby.uuid))
+    }
+
+    private fun canLobbyBeJoined(lobby: Lobby): Boolean {
+        return lobby.players.size < lobby.lobbySize
     }
 
     @GetMapping("/lobby/close")
