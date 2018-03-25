@@ -1,85 +1,91 @@
 package com.msc.mastermind.api
 
-import com.msc.mastermind.ConnectionInformation
-import com.msc.mastermind.Lobby
+import com.msc.mastermind.*
+import com.msc.mastermind.exceptions.*
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.ResponseEntity
-import java.util.*
-import javax.servlet.http.HttpServletRequest
-import org.springframework.http.HttpStatus
-import org.springframework.web.bind.annotation.*
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RequestHeader
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
 
 @RestController
-object LobbyController {
+class LobbyController() : BaseController() {
+
+    @Autowired
+    lateinit var authenticationController: AuthenticationController
+
+    constructor(authenticationController: AuthenticationController) : this() {
+        this.authenticationController = authenticationController
+    }
 
     private val lobbies: MutableList<Lobby> = mutableListOf()
 
     @GetMapping("/lobby/create")
     fun createLobby(@RequestParam(value = "guessAttempts", defaultValue = "6") guessAttempts: Int,
+                    @RequestParam(value = "lobbySize", defaultValue = "2") lobbySize: Int,
                     @RequestParam(value = "inviteOnly", defaultValue = "true") inviteOnly: Boolean,
                     @RequestParam(value = "automatedGuessResponses", defaultValue = "true") automatedGuessResponses: Boolean,
-                    response: HttpServletRequest): ResponseEntity<Any> {
-        return createLobby(response.remoteAddr, guessAttempts, automatedGuessResponses, inviteOnly)
+                    @RequestHeader(value = "userSession") userSession: String): ResponseEntity<Response> {
+        return createLobby(userSession, lobbySize, guessAttempts, automatedGuessResponses, inviteOnly)
     }
 
-    fun createLobby(remoteAddress: String, guessAttempts: Int = 6, inviteOnly: Boolean = true, automatedGuessResponses: Boolean = true): ResponseEntity<Any> {
-        val lobby = Lobby(inviteOnly, remoteAddress, guessAttempts, automatedGuessResponses)
-        val canCreateLobby = canCreateLobby(remoteAddress, lobby)
+    fun createLobby(userSession: String, lobbySize: Int = 2, guessAttempts: Int = 6, inviteOnly: Boolean = true, automatedGuessResponses: Boolean = true): ResponseEntity<Response> {
+        val player = authenticationController.findPlayer(userSession) ?: throw InvalidUserSessionException()
+        canCreateLobby(userSession, lobbySize, guessAttempts)
+        val lobby = Lobby(player, lobbySize, inviteOnly, guessAttempts, automatedGuessResponses)
 
-        if (canCreateLobby.isNullOrEmpty().not()) {
-            return ResponseEntity
-                    .status(HttpStatus.BAD_REQUEST)
-                    .body(canCreateLobby)
-        }
-
+        lobby.players.add(player)
         lobbies.add(lobby)
-        return ResponseEntity.ok(ConnectionInformation(lobby.uuid, lobby.userSessionPlayerOne))
+        return ResponseEntity.ok(Response(ResponseType.CONNECTION_INFORMATION, ConnectionInformation(lobby.uuid)))
     }
 
-    private fun canCreateLobby(ipAddress: String, lobby: Lobby): String? {
-        if (lobbies.stream().anyMatch { it.remoteAddress == ipAddress }) {
-            return "You have already created a lobby."
+    private fun canCreateLobby(userSession: String, lobbySize: Int, guessAttempts: Int) {
+        if (lobbies.stream().anyMatch { it.players.find { it.userSession == userSession } != null }) {
+            throw CantCreateLobbyException("You have already created a lobby.")
         }
 
-        if (lobbies.stream().anyMatch { it.uuid == lobby.uuid }) {
-            return "There is already a lobby with the previously generated UUID."
+        if (guessAttempts < 1) {
+            throw CantCreateLobbyException("A lobby needs to have at least 1 guess attempt.")
         }
 
-        return null
+        if (lobbySize < 2) {
+            throw CantCreateLobbyException("The lobby needs to have space for at least 2 players.")
+        }
+
+        if ((lobbySize - 1) > guessAttempts) {
+            throw CantCreateLobbyException("The lobby shouldn't have space for more codebreakers than there are guess attempts.")
+        }
     }
 
     @GetMapping("/lobby/join")
-    fun joinLobby(@RequestParam(value = "uuid") uuid: String): ResponseEntity<Any> {
-        val lobby = lobbies.find { it.uuid == uuid } ?: return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body("The lobby you are trying to join doesn't exist.")
+    fun joinLobby(@RequestParam(value = "uuid") uuid: String, @RequestHeader(value = "userSession") userSession: String): ResponseEntity<Response> {
+        val lobby = lobbies.find { it.uuid == uuid } ?: throw LobbyNotExistentException()
 
-        if (lobby.userSessionPlayerTwo.isPresent) {
-            return ResponseEntity
-                    .status(HttpStatus.BAD_REQUEST)
-                    .body("This lobby is already full")
+        if (lobby.players.size >= lobby.lobbySize) {
+            throw LobbyFullException()
         }
 
-        val userSessionPlayerTwo = UUID.randomUUID().toString()
-        lobby.userSessionPlayerTwo = Optional.of(userSessionPlayerTwo)
+        val player = authenticationController.findPlayer(userSession) ?: throw InvalidUserSessionException()
 
-        return ResponseEntity.ok(ConnectionInformation(lobby.uuid, lobby.userSessionPlayerOne))
+        lobby.players.add(player)
+
+        return ResponseEntity.ok(Response(ResponseType.CONNECTION_INFORMATION, ConnectionInformation(lobby.uuid)))
     }
 
     @GetMapping("/lobby/close")
-    fun closeLobby(@RequestParam(value = "uuid") uuid: String, @RequestHeader(value = "userSession") userSession: String): ResponseEntity<Any> {
-        val lobby = lobbies.find { it.uuid == uuid } ?: return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body("The lobby you are trying to close doesn't exist.")
+    fun closeLobby(@RequestHeader(value = "userSession") userSession: String): ResponseEntity<Response> {
+        val player = authenticationController.findPlayer(userSession) ?: throw InvalidUserSessionException()
+        val lobby = lobbies.find { it.players.find { it.userSession == userSession } != null }
+                ?: throw LobbyNotExistentException("You aren't part of any lobby.")
 
-        if (lobby.userSessionPlayerOne != userSession) {
-            return ResponseEntity
-                    .status(HttpStatus.BAD_REQUEST)
-                    .body("The lobby can't be closed, due to invalid permissions.")
+        if (lobby.owner != player) {
+            throw InsufficientPermissionsException("You are not the lobbies owner.")
         }
 
         closeLobby(lobby)
 
-        return ResponseEntity.ok("Lobby has been closed successfully")
+        return ResponseEntity.ok(Response(ResponseType.SUCCESS, Success("Lobby has been closed successfully")))
     }
 
     private fun closeLobby(lobby: Lobby) {
@@ -87,9 +93,6 @@ object LobbyController {
         //TODO Implement actual close logic to notify second player
     }
 
-    fun findGameState(userSession: String) = lobbies.find { it.userSessionPlayerOne == userSession }?.gameState
-
-    fun closeAllLobbies() {
-        lobbies.clear()
-    }
+    fun findLobbyByUserSession(userSession: String) = lobbies.find { it.players.find { it.userSession == userSession } != null }
+    fun findLobbyByUUID(lobbyUUID: String) = lobbies.find { it.uuid == lobbyUUID }
 }
